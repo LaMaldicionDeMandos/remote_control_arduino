@@ -5,11 +5,12 @@
 #define INIT 0
 #define RESET 1
 #define MODE 2
-#define CONNECT 3
-#define GET_IP 4
-#define CONFIG 5
-#define LISTEN 6
-#define LISTENING 7
+#define GET_ENDPOINT 3
+#define CONNECT 4
+#define GET_IP 5
+#define CONFIG 6
+#define LISTEN 7
+#define LISTENING 8
 
 SoftwareSerial wifi(2, 3); //RX, TX
 
@@ -31,6 +32,7 @@ int process() {
     case INIT: return processInit();
     case RESET: return processReset();
     case MODE: return processMode();
+    case GET_ENDPOINT: return processGetEndpoint();
     case CONNECT: return processConnect();
     case GET_IP: return processGetIp();
     case CONFIG: return processConfig();
@@ -56,6 +58,7 @@ int processInit() {
   } else if (has(text, "ERROR")) {
     return processError();
   }  
+  Serial.print(text);
   return INIT;
 }  
 
@@ -68,7 +71,8 @@ int processReset() {
     return MODE;
   } else if (has(text, "ERROR")) {
     return processError();
-  }  
+  }
+  Serial.print(text);  
   return RESET;
 }
 
@@ -77,12 +81,21 @@ int processMode() {
   if (has(text, "OK")) {
     Serial.println("AT+CWMODE=1 OK");
     delay(1000);
-    wifi.write("AT+CWJAP=\"La Maldicion de Mandos\",\"spuenci1\"");
-    return CONNECT;
+    wifi.write("AT+CWLAP\r\n");
+    return GET_ENDPOINT;
   } else if (has(text, "ERROR")) {
     return processError();
-  }  
+  }
+  Serial.print(text);  
   return MODE;
+}
+
+int processGetEndpoint() {
+  delay(5000);
+  String text = load();
+  Serial.println(text);
+  wifi.write("AT+CWJAP=\"La Maldicion de Mandos\",\"spuenci1\"\r\n");
+  return CONNECT;
 }
 
 int processConnect() {
@@ -90,11 +103,12 @@ int processConnect() {
   if (has(text, "OK")) {
     Serial.println("AT+CWJAP OK");
     delay(1000);
-    wifi.write("AT+CIFSR");
+    wifi.write("AT+CIFSR\r\n");
     return GET_IP;
   } else if (has(text, "ERROR")) {
     return processError();
   }  
+  Serial.print(text);
   return CONNECT;
 }
 
@@ -102,13 +116,15 @@ int processGetIp() {
   String text = load();
   if (has(text, "OK")) {
     Serial.println("AT+CIFSR OK");
-    Serial.println(text);
+    String ip = findIp(text);
+    Serial.println(ip);
     delay(1000);
-    wifi.write("AT+CIPMUX=1");
+    wifi.write("AT+CIPMUX=1\r\n");
     return CONFIG;
   } else if (has(text, "ERROR")) {
     return processError();
   }  
+  Serial.print(text);
   return GET_IP;
 }
 
@@ -117,11 +133,12 @@ int processConfig() {
   if (has(text, "OK")) {
     Serial.println("AT+CIPMUX=1 OK");
     delay(1000);
-    wifi.write("AT+CIPSERVER=1,80");
+    wifi.write("AT+CIPSERVER=1,80\r\n");
     return LISTEN;
   } else if (has(text, "ERROR")) {
     return processError();
   }  
+  Serial.print(text);
   return CONFIG;
 }
 
@@ -133,12 +150,13 @@ int processListen() {
   } else if (has(text, "ERROR")) {
     return processError();
   }  
+  Serial.print(text);
   return LISTEN;
 }
 
 int processListening() {
   String text = load();
-  Serial.println(text);
+  Serial.print(text);
   return LISTENING;
 }
 
@@ -153,4 +171,10 @@ String load() {
 
 boolean has(String text, String search) {
   return text.indexOf(search) >= 0; 
+}
+
+String findIp(String text) {
+  int index = text.indexOf("STAIP,\"") + 7;
+  String beginIp = text.substring(index);
+  return beginIp.substring(0, beginIp.indexOf("\""));
 }
