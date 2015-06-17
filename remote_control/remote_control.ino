@@ -156,7 +156,24 @@ int processListen() {
 
 int processListening() {
   String text = load();
-  Serial.print(text);
+  int index = text.indexOf("+IPD,") + 5;
+  String sub = text.substring(index);
+  index = sub.indexOf(",");
+  sub = sub.substring(0, index);
+  int cip = sub.toInt();
+  String ok = "200";
+  String cipSend = "AT+CIPSEND=";
+  cipSend+= sub; 
+  cipSend+= ","; 
+  cipSend+= ok.length();
+  cipSend+= "\r\n";
+  wifi.write(cipSend);
+  wifi.write(ok);
+  String commandClose = "AT+CIPCLOSE="; 
+  commandClose+= sub; 
+  commandClose+= "\r\n";
+  wifi.write(commandClose);
+  Serial.print(sub);
   return LISTENING;
 }
 
