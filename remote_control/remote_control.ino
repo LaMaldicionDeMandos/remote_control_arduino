@@ -162,17 +162,11 @@ int processListening() {
   sub = sub.substring(0, index);
   int cip = sub.toInt();
   String ok = "200";
-  String cipSend = "AT+CIPSEND=";
-  cipSend+= sub; 
-  cipSend+= ","; 
-  cipSend+= ok.length();
-  cipSend+= "\r\n";
-  wifi.write(cipSend);
-  wifi.write(ok);
-  String commandClose = "AT+CIPCLOSE="; 
-  commandClose+= sub; 
-  commandClose+= "\r\n";
-  wifi.write(commandClose);
+  String cipSend = "AT+CIPSEND=" + sub + "," + ok.length() + "\r\n";
+  wifi.print(String(cipSend));
+  wifi.print(String(ok));
+  String commandClose = "AT+CIPCLOSE=" + sub + "\r\n";
+  wifi.print(String(commandClose));
   Serial.print(sub);
   return LISTENING;
 }
