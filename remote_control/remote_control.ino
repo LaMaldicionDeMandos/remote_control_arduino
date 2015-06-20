@@ -1,7 +1,8 @@
 #include <SoftwareSerial.h>
 
-#define SPEED 57600
+#define SPEED 9600
 
+//ESTADOS
 #define INIT 0
 #define RESET 1
 #define MODE 2
@@ -11,11 +12,20 @@
 #define CONFIG 6
 #define LISTEN 7
 #define LISTENING 8
+#define WAITING_RESPONSE 9
+#define WAITING_MESSAGE_OK 10
 
-SoftwareSerial wifi(2, 3); //RX, TX
+//COMANDOS
+#define FAVICON -1
+#define BAD 0
+#define PING 1
 
+SoftwareSerial wifi(3, 2); //RX, TX
 
 int state = INIT;
+String message = "";
+String ip;
+int cip;
 
 void setup() {
   Serial.begin(SPEED);
@@ -24,7 +34,10 @@ void setup() {
 }  
 
 void loop() {
-  state = process();
+  if(wifi.available()) {
+    state = process();
+  }  
+  delay(300);
 }
 
 int process() {
@@ -38,6 +51,8 @@ int process() {
     case CONFIG: return processConfig();
     case LISTEN: return processListen();
     case LISTENING: return processListening();
+    case WAITING_RESPONSE: return processResponse(0);
+    case WAITING_MESSAGE_OK: return processClose(0);
     default: return state;
   }
 }
@@ -78,7 +93,7 @@ int processReset() {
 
 int processMode() {
   String text = load();
-  if (has(text, "OK")) {
+  if (has(text, "OK") || has(text, "no change")) {
     Serial.println("AT+CWMODE=1 OK");
     delay(1000);
     wifi.write("AT+CWLAP\r\n");
@@ -91,7 +106,7 @@ int processMode() {
 }
 
 int processGetEndpoint() {
-  delay(5000);
+  delay(3000);
   String text = load();
   Serial.println(text);
   wifi.write("AT+CWJAP=\"La Maldicion de Mandos\",\"spuenci1\"\r\n");
@@ -116,7 +131,7 @@ int processGetIp() {
   String text = load();
   if (has(text, "OK")) {
     Serial.println("AT+CIFSR OK");
-    String ip = findIp(text);
+    ip = findIp(text);
     Serial.println(ip);
     delay(1000);
     wifi.write("AT+CIPMUX=1\r\n");
@@ -156,19 +171,89 @@ int processListen() {
 
 int processListening() {
   String text = load();
-  int index = text.indexOf("+IPD,") + 5;
-  String sub = text.substring(index);
-  index = sub.indexOf(",");
-  sub = sub.substring(0, index);
-  int cip = sub.toInt();
-  String ok = "200";
-  String cipSend = "AT+CIPSEND=" + sub + "," + ok.length() + "\r\n";
-  wifi.print(String(cipSend));
-  wifi.print(String(ok));
-  String commandClose = "AT+CIPCLOSE=" + sub + "\r\n";
-  wifi.print(String(commandClose));
-  Serial.print(sub);
+  if (has(text, "+IPD")) {
+    int index = text.indexOf("+IPD,") + 5;
+    String sub = text.substring(index);
+    index = sub.indexOf(",");
+    String cipText = sub.substring(0, index);
+    cip = cipText.toInt();
+    String request = sub.substring(sub.indexOf(":")+1, sub.indexOf(" HTTP/1.1"));
+    int command = findCommand(request);
+    message = processRequest(command, request);
+    wifi.print("AT+CIPSEND=");
+    wifi.print(cip);
+    wifi.print(",");
+    wifi.println(message.length());
+    if ( command == FAVICON) {
+      Serial.println("Processing FAVICON");
+      delay(100);
+      wifi.println("AT+CIPCLOSE=0");
+      return LISTENING;
+    }
+    return WAITING_RESPONSE;
+  }
   return LISTENING;
+}
+
+int findCommand(String request) {
+  if ( request.startsWith("GET")) {
+    return GET(request);
+  }
+}
+
+String processRequest(int command, String request) {
+  switch(command) {
+    case PING: return ping(); 
+    default: return "HTTP/1.1 404 Bad Request\r\nContent-Type: text/text\r\nContent-Length: 0\r\n\r\n";
+  }
+}
+
+int GET(String request) {
+  Serial.println("Processing GET");
+  String sub = request.substring(5);
+  String command = sub;
+  int pathIndex = sub.indexOf("/");
+  if (pathIndex >=0) {
+    command = sub.substring(0, pathIndex);
+  }
+  Serial.println("Processing: " + command);
+  if (String("ping").equals(command)) {
+    return PING;
+  }
+  return BAD;
+}
+
+String ping() {
+  Serial.println("Processing PING");
+  return "HTTP/1.1 200 OK\r\nContent-Type: text/text\r\nContent-Length: 0\r\n\r\n";  
+}
+
+int processResponse(int ttl) {
+  Serial.println("WAITING MESSAGE");
+  String text = load();
+  Serial.println(text);
+  if(has(text, ">") || ttl > 6) {
+    Serial.println("Sending message " + message);
+    wifi.println(String(message));
+    delay(10);
+    return WAITING_MESSAGE_OK;
+  }
+  if(has(text, "Unlink")) {
+    return LISTENING;
+  }
+  delay(500);
+  return processResponse(ttl+1);
+}
+
+int processClose(int ttl) {
+  String text = load();
+  if(has(text, "SEND OK") || ttl > 6) {
+    Serial.println("Receive OK");
+    wifi.println("AT+CIPCLOSE=0");
+    return LISTENING;
+  }
+  delay(500);
+  return processClose(ttl+1);
 }
 
 String load() {
