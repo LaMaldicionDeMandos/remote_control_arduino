@@ -19,6 +19,9 @@
 #define FAVICON -1
 #define BAD 0
 #define PING 1
+#define LEDS 2
+
+#define LED 4
 
 SoftwareSerial wifi(3, 2); //RX, TX
 
@@ -30,7 +33,8 @@ int cip;
 void setup() {
   Serial.begin(SPEED);
   wifi.begin(SPEED);
-  wifi.write("AT\r\n");
+  wifi.println("AT");
+  delay(10);
 }  
 
 void loop() {
@@ -180,6 +184,9 @@ int processListening() {
     String request = sub.substring(sub.indexOf(":")+1, sub.indexOf(" HTTP/1.1"));
     int command = findCommand(request);
     message = processRequest(command, request);
+    String mensaje = "MENSAJE: ";
+    mensaje+=message;
+    Serial.println(mensaje);
     wifi.print("AT+CIPSEND=");
     wifi.print(cip);
     wifi.print(",");
@@ -204,6 +211,7 @@ int findCommand(String request) {
 String processRequest(int command, String request) {
   switch(command) {
     case PING: return ping(); 
+    case LEDS: return leds();
     default: return "HTTP/1.1 404 Bad Request\r\nContent-Type: text/text\r\nContent-Length: 0\r\n\r\n";
   }
 }
@@ -220,12 +228,27 @@ int GET(String request) {
   if (String("ping").equals(command)) {
     return PING;
   }
+  if (String("leds").equals(command)) {
+    return LEDS;
+  }
   return BAD;
 }
 
 String ping() {
   Serial.println("Processing PING");
   return "HTTP/1.1 200 OK\r\nContent-Type: text/text\r\nContent-Length: 0\r\n\r\n";  
+}
+
+String leds() {
+  Serial.println("Processing LEDS");
+  String leds = "[";
+  leds+= LED;
+  leds+= "]";
+  String message = "HTTP/1.1 200 OK\r\nContent-Type: text/text\r\nContent-Length: ";
+  message+= leds.length();
+  message+= "\r\n\r\n";
+  message+= leds;  
+  return String(message); 
 }
 
 int processResponse(int ttl) {
@@ -262,6 +285,7 @@ String load() {
     char c = wifi.read();
     text+=c;
   }
+  Serial.print(text);
   return text;
 }
 
