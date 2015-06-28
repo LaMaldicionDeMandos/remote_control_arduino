@@ -2,13 +2,6 @@
 
 #define SPEED 9600
 
-//COMANDOS
-#define FAVICON -1
-#define BAD 0
-#define PING 1
-#define LEDS 2
-#define STATUS 3
-
 // Strings
 //COMMANDS
 #define COMMAND_AT "AT\r\n"
@@ -31,9 +24,10 @@
 
 //HTTP
 #define HTTP_INIT "+IPD,"
-#define HTTP_VERSION " HTTP/1.1"
 #define HTTP_GET "GET"
+#define HTTP_PUT "PUT"
 #define HTTP_HEAD "HTTP/1.1 200 OK\r\nContent-Type: text/text\r\nContent-Length: "
+#define HTTP_HEAD_NO_CHANGE "HTTP/1.1 304 Not Modified\r\nContent-Type: text/text\r\nContent-Length: "
 #define HTTP_END_HEAD "\r\n\r\n"
 #define HTTP_BAD_RESPONSE "HTTP/1.1 404 Bad Request\r\nContent-Type: text/text\r\nContent-Length: 0\r\n\r\n"
 
@@ -55,7 +49,6 @@ int ledList[] = {LOW, LOW, LOW, LOW, LOW};
 SoftwareSerial wifi(3, 2); //RX, TX
 
 String ip;
-int cip;
 
 void setup() {
   Serial.begin(SPEED);
@@ -144,74 +137,88 @@ String command(String command, String expected, String expected2, int timeout) {
 
 void listen() {
   if (wifi.find(HTTP_INIT)) {
-    String text = load(500);
-    processRequest(text); 
+    processRequest(); 
   } else {
     load(500);
   } 
 }
 
-void processRequest(String text) {
-    int index = text.indexOf(COMMA);
-    String cipText = text.substring(0, index);
-    cip = cipText.toInt();
-    String request = text.substring(text.indexOf(":")+1, text.indexOf(HTTP_VERSION));
-    int commandCode = findCommand(request);
-    String message = processRequestCommand(commandCode, request);
-    int messageSize = message.length();
-    wifi.print(COMMAND_SEND);
-    wifi.print(cipText);
-    wifi.print(COMMA);
-    wifi.println(messageSize);
-    if (wifi.find(RES_WAIT)) {
-      wifi.println(message);
-      Serial.println("Send:");
-      Serial.println(message);
-      if(wifi.find("SEND OK")) {
-        Serial.println("SEND OK closing");
-        wifi.print(COMMAND_CLOSE);
-        wifi.println(cip);
-      }
-    }  
-}
-
-int findCommand(String request) {
-  if ( request.startsWith(HTTP_GET)) {
-    return GET(request);
+void processRequest() {
+  String cip = wifi.readStringUntil(',');
+  wifi.find(":");
+  String method = wifi.readStringUntil(' ');
+  String request = wifi.readStringUntil(' ');
+  String message;
+  if (HTTP_PUT.equals(method)) {
+    message = putRequest();
+  } else if (HTTP_GET.equals(method)) {
+    message = getRequest();
+  } else {
+    message = HTTP_BAD_RESPONSE;
+  }
+  load(200);
+  int messageSize = message.length();
+  wifi.print(COMMAND_SEND);
+  wifi.print(cipText);
+  wifi.print(COMMA);
+  wifi.println(messageSize);
+  if (wifi.find(RES_WAIT)) {
+    wifi.println(message);
+    Serial.println("Send:");
+    Serial.println(message);
+    if(wifi.find("SEND OK")) {
+      Serial.println("SEND OK closing");
+      wifi.print(COMMAND_CLOSE);
+      wifi.println(cip);
+    }
   }
 }
 
-String processRequestCommand(int command, String request) {
-  switch(command) {
-    case PING: return ping(); 
-    case LEDS: return leds();
-    case STATUS: return ledStatus(request);
-    default: return HTTP_BAD_RESPONSE;
-  }
+int putRequest() {
+  wifi.find("/");
+  String command = wifi.readStringUntil('/');
+  if (String(REQ_LED).equals(command)) {
+    return led();
+  }  
+  return HTTP_BAD_RESPONSE;
 }
 
-int GET(String request) {
-  String sub = request.substring(5);
-  String command = sub;
-  int pathIndex = sub.indexOf("/");
-  if (pathIndex >=0) {
-    command = sub.substring(0, pathIndex);
-  }
+int getRequest() {
+  wifi.find("/");
+  String command = wifi.readStringUntil('/');
   if (String(REQ_PING).equals(command)) {
-    return PING;
+    return ping();
   }
   if (String(REQ_LEDS).equals(command)) {
-    return LEDS;
+    return leds();
   }
   if (String(REQ_STATUS).equals(command)) {
-    return STATUS;
+    return ledStatus();
   }
-  return BAD;
+  return HTTP_BAD_RESPONSE;
+}
+
+String header(String code, String body) {
+  String header = "";
+  header+= code;
+  header+= String(body.length());
+  header+= HTTP_END_HEAD;
+  header+= body;
+  return header;
 }
 
 String headerOk(String body) {
   String header = "";
   header+= HTTP_HEAD;
+  header+= String(body.length());
+  header+= HTTP_END_HEAD;
+  header+= body;
+  return header;
+}
+
+String headerNoChange(String body) {
+  String header = "";
+  header+= HTTP_HEAD_NO_CHANGE;
   header+= String(body.length());
   header+= HTTP_END_HEAD;
   header+= body;
@@ -233,9 +240,8 @@ String leds() {
   return headerOk(response); 
 }
 
-String ledStatus(String request) {
-  String ledString = request.substring(request.indexOf("status/") + 7);
-  ledString.trim();
+String ledStatus() {
+  String ledString = wifi.readStringUntil(' ');
   int led = ledString.toInt();
   if (led == LED) {
     String state = OFF;
@@ -243,6 +249,31 @@ String ledStatus(String request) {
       state = ON;
     }
     return headerOk(state);
+  }
+  return headerBad();
+}
+
+String led() {
+  String ledString = wifi.readStringUntil('/');
+  String comm = wifi.readStringUntil(' ');
+  int led = ledString.toInt();
+  if (led == LED) {
+    String state = OFF;
+    if (ledList[led] == HIGH) {
+      state = ON;
+    }
+    if (state.equals(comm)) {
+      return headerNoChange("");
+    } else {
+      if (ledList[led] == HIGH) {
+        digitalWrite(led, LOW);
+        ledList[led] = LOW;
+      } else {
+        digitalWrite(led, HIGH);
+        ledList[led] = HIGH;  
+      }
+    }
+    return headerOk("");
   }
   return headerBad();
 }
