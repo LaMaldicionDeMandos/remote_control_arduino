@@ -2,291 +2,274 @@
 
 #define SPEED 9600
 
-//ESTADOS
-#define INIT 0
-#define RESET 1
-#define MODE 2
-#define GET_ENDPOINT 3
-#define CONNECT 4
-#define GET_IP 5
-#define CONFIG 6
-#define LISTEN 7
-#define LISTENING 8
-#define WAITING_RESPONSE 9
-#define WAITING_MESSAGE_OK 10
-
 //COMANDOS
 #define FAVICON -1
 #define BAD 0
 #define PING 1
 #define LEDS 2
+#define STATUS 3
+
+// Strings
+//COMMANDS
+#define COMMAND_AT "AT\r\n"
+#define COMMAND_RESET "AT+RST\r\n"
+#define COMMAND_MODE "AT+CWMODE=1\r\n"
+#define COMMAND_LAP "AT+CWLAP\r\n"
+#define COMMAND_JAP "AT+CWJAP="
+#define COMMAND_FSR "AT+CIFSR\r\n"
+#define COMMAND_MUX "AT+CIPMUX=1\r\n"
+#define COMMAND_SERVER "AT+CIPSERVER=1,80\r\n"
+#define COMMAND_SEND "AT+CIPSEND="
+#define COMMAND_CLOSE "AT+CIPCLOSE="
+
+//RESP
+#define OK "OK"
+#define NOTHING ""
+#define READY "ready"
+#define NO_CHANGE "no change"
+#define RES_WAIT ">"
+
+//HTTP
+#define HTTP_INIT "+IPD,"
+#define HTTP_VERSION " HTTP/1.1"
+#define HTTP_GET "GET"
+#define HTTP_HEAD "HTTP/1.1 200 OK\r\nContent-Type: text/text\r\nContent-Length: "
+#define HTTP_END_HEAD "\r\n\r\n"
+#define HTTP_BAD_RESPONSE "HTTP/1.1 404 Bad Request\r\nContent-Type: text/text\r\nContent-Length: 0\r\n\r\n"
+
+//REQUESTS
+#define REQ_PING "ping"
+#define REQ_LEDS "leds"
+#define REQ_STATUS "status"
+#define REQ_LED "led"
+
+//MISELANEUS
+#define COMMA ","
+#define ON "on"
+#define OFF "off"
 
 #define LED 4
 
+int ledList[] = {LOW, LOW, LOW, LOW, LOW};
+
 SoftwareSerial wifi(3, 2); //RX, TX
 
-int state = INIT;
-String message = "";
 String ip;
 int cip;
 
 void setup() {
   Serial.begin(SPEED);
   wifi.begin(SPEED);
-  wifi.println("AT");
   delay(10);
+  configure();
 }  
 
 void loop() {
   if(wifi.available()) {
-    state = process();
-  }  
-  delay(300);
-}
-
-int process() {
-  switch(state) {
-    case INIT: return processInit();
-    case RESET: return processReset();
-    case MODE: return processMode();
-    case GET_ENDPOINT: return processGetEndpoint();
-    case CONNECT: return processConnect();
-    case GET_IP: return processGetIp();
-    case CONFIG: return processConfig();
-    case LISTEN: return processListen();
-    case LISTENING: return processListening();
-    case WAITING_RESPONSE: return processResponse(0);
-    case WAITING_MESSAGE_OK: return processClose(0);
-    default: return state;
+    listen();
   }
 }
 
-int processError() {
-  Serial.println("ERROR");
-  wifi.write("AT+RST\r\n");
-  return RESET;
+void configure() {
+  configureInit();
+  configureReset();
+  configureMode();
+  findEndpoint();
+  configureEndpoint();
+  getIp();
+  configureMux();
+  configureServer();
 }
 
-int processInit() {
-  String text = load();
-  if(has(text, "OK")) {
-    Serial.println("AT OK");
-    delay(1000);
-    wifi.write("AT+RST\r\n");
-    return RESET;
-  } else if (has(text, "ERROR")) {
-    return processError();
-  }  
-  Serial.print(text);
-  return INIT;
+void configureInit() {
+  command(COMMAND_AT, OK, NOTHING, 200);
+}
+
+void configureReset() {
+  command(COMMAND_RESET, READY, NOTHING, 3000);
+}
+
+void configureMode() {
+  command(COMMAND_MODE, OK, NO_CHANGE, 500);
+}
+
+void findEndpoint() {
+  String text = command(COMMAND_LAP, OK, NOTHING, 5000);
+  if (!has(text, "La Maldicion de Mandos")) {
+    Serial.println("No encontrado Endpoint, está prendido?");
+  }
+}
+
+void configureEndpoint() {
+  String cmd = "";
+  cmd+= COMMAND_JAP;
+  cmd+= "\"La Maldicion de Mandos\",\"spuenci1\"\r\n";
+  command(cmd, OK, NOTHING, 5000);
+}
+
+void getIp() {
+  String text = command(COMMAND_FSR, OK, NOTHING, 1000);
+  ip = findIp(text);
+}
+
+void configureMux() {
+  command(COMMAND_MUX, OK, NOTHING, 500); 
 }  
 
-int processReset() {
-  String text = load();
-  if (has(text, "ready")) {
-    Serial.println("AT+RST ready");
-    delay(1000);
-    wifi.write("AT+CWMODE=1\r\n");
-    return MODE;
-  } else if (has(text, "ERROR")) {
-    return processError();
-  }
-  Serial.print(text);  
-  return RESET;
+void configureServer() {
+  command(COMMAND_SERVER, OK, NOTHING, 1000);
 }
 
-int processMode() {
-  String text = load();
-  if (has(text, "OK") || has(text, "no change")) {
-    Serial.println("AT+CWMODE=1 OK");
-    delay(1000);
-    wifi.write("AT+CWLAP\r\n");
-    return GET_ENDPOINT;
-  } else if (has(text, "ERROR")) {
-    return processError();
-  }
-  Serial.print(text);  
-  return MODE;
-}
-
-int processGetEndpoint() {
-  delay(3000);
-  String text = load();
-  Serial.println(text);
-  wifi.write("AT+CWJAP=\"La Maldicion de Mandos\",\"spuenci1\"\r\n");
-  return CONNECT;
-}
-
-int processConnect() {
-  String text = load();
-  if (has(text, "OK")) {
-    Serial.println("AT+CWJAP OK");
-    delay(1000);
-    wifi.write("AT+CIFSR\r\n");
-    return GET_IP;
-  } else if (has(text, "ERROR")) {
-    return processError();
-  }  
-  Serial.print(text);
-  return CONNECT;
-}
-
-int processGetIp() {
-  String text = load();
-  if (has(text, "OK")) {
-    Serial.println("AT+CIFSR OK");
-    ip = findIp(text);
-    Serial.println(ip);
-    delay(1000);
-    wifi.write("AT+CIPMUX=1\r\n");
-    return CONFIG;
-  } else if (has(text, "ERROR")) {
-    return processError();
-  }  
-  Serial.print(text);
-  return GET_IP;
-}
-
-int processConfig() {
-  String text = load();
-  if (has(text, "OK")) {
-    Serial.println("AT+CIPMUX=1 OK");
-    delay(1000);
-    wifi.write("AT+CIPSERVER=1,80\r\n");
-    return LISTEN;
-  } else if (has(text, "ERROR")) {
-    return processError();
-  }  
-  Serial.print(text);
-  return CONFIG;
-}
-
-int processListen() {
-  String text = load();
-  if (has(text, "OK")) {
-    Serial.println("AT+CIPSERVER=1,80 OK");
-    return LISTENING;
-  } else if (has(text, "ERROR")) {
-    return processError();
-  }  
-  Serial.print(text);
-  return LISTEN;
-}
-
-int processListening() {
-  String text = load();
-  if (has(text, "+IPD")) {
-    int index = text.indexOf("+IPD,") + 5;
-    String sub = text.substring(index);
-    index = sub.indexOf(",");
-    String cipText = sub.substring(0, index);
-    cip = cipText.toInt();
-    String request = sub.substring(sub.indexOf(":")+1, sub.indexOf(" HTTP/1.1"));
-    int command = findCommand(request);
-    message = processRequest(command, request);
-    String mensaje = "MENSAJE: ";
-    mensaje+=message;
-    Serial.println(mensaje);
-    wifi.print("AT+CIPSEND=");
-    wifi.print(cip);
-    wifi.print(",");
-    wifi.println(message.length());
-    if ( command == FAVICON) {
-      Serial.println("Processing FAVICON");
-      delay(100);
-      wifi.println("AT+CIPCLOSE=0");
-      return LISTENING;
+String command(String command, String expected, String expected2, int timeout) {
+  String text = send(command, timeout);
+  if (!expected2.equals(NOTHING)) {
+    if (!has(text, expected) && !has(text, expected2)) {
+      Serial.print(command);
+      Serial.print(" No responde ni ");
+      Serial.print(expected);
+      Serial.print(" ni ");
+      Serial.print(expected2);
+      Serial.println(" :(");
     }
-    return WAITING_RESPONSE;
+  } else {
+    if(!has(text, expected)) {
+      Serial.print(command);
+      Serial.print(" No responde ");
+      Serial.print(expected);
+      Serial.println(" :(");
+    }
   }
-  return LISTENING;
+  return text;
+}
+
+void listen() {
+  if (wifi.find(HTTP_INIT)) {
+    String text = load(500);
+    processRequest(text); 
+  } else {
+    load(500);
+  } 
+}
+
+void processRequest(String text) {
+    int index = text.indexOf(COMMA);
+    String cipText = text.substring(0, index);
+    cip = cipText.toInt();
+    String request = text.substring(text.indexOf(":")+1, text.indexOf(HTTP_VERSION));
+    int commandCode = findCommand(request);
+    String message = processRequestCommand(commandCode, request);
+    int messageSize = message.length();
+    wifi.print(COMMAND_SEND);
+    wifi.print(cipText);
+    wifi.print(COMMA);
+    wifi.println(messageSize);
+    if (wifi.find(RES_WAIT)) {
+      wifi.println(message);
+      Serial.println("Send:");
+      Serial.println(message);
+      if(wifi.find("SEND OK")) {
+        Serial.println("SEND OK closing");
+        wifi.print(COMMAND_CLOSE);
+        wifi.println(cip);
+      }
+    }  
 }
 
 int findCommand(String request) {
-  if ( request.startsWith("GET")) {
+  if ( request.startsWith(HTTP_GET)) {
     return GET(request);
   }
 }
 
-String processRequest(int command, String request) {
+String processRequestCommand(int command, String request) {
   switch(command) {
     case PING: return ping(); 
     case LEDS: return leds();
-    default: return "HTTP/1.1 404 Bad Request\r\nContent-Type: text/text\r\nContent-Length: 0\r\n\r\n";
+    case STATUS: return ledStatus(request);
+    default: return HTTP_BAD_RESPONSE;
   }
 }
 
 int GET(String request) {
-  Serial.println("Processing GET");
   String sub = request.substring(5);
   String command = sub;
   int pathIndex = sub.indexOf("/");
   if (pathIndex >=0) {
     command = sub.substring(0, pathIndex);
   }
-  Serial.println("Processing: " + command);
-  if (String("ping").equals(command)) {
+  if (String(REQ_PING).equals(command)) {
     return PING;
   }
-  if (String("leds").equals(command)) {
+  if (String(REQ_LEDS).equals(command)) {
     return LEDS;
+  }
+  if (String(REQ_STATUS).equals(command)) {
+    return STATUS;
   }
   return BAD;
 }
 
+String headerOk(String body) {
+  String header = "";
+  header+= HTTP_HEAD;
+  header+= String(body.length());
+  header+= HTTP_END_HEAD;
+  header+= body;
+  return header;
+}
+
+String headerBad() {
+  return HTTP_BAD_RESPONSE;
+}
+
 String ping() {
-  Serial.println("Processing PING");
-  return "HTTP/1.1 200 OK\r\nContent-Type: text/text\r\nContent-Length: 0\r\n\r\n";  
+  return headerOk(NOTHING);
 }
 
 String leds() {
-  Serial.println("Processing LEDS");
-  String leds = "[";
-  leds+= LED;
-  leds+= "]";
-  String message = "HTTP/1.1 200 OK\r\nContent-Type: text/text\r\nContent-Length: ";
-  message+= leds.length();
-  message+= "\r\n\r\n";
-  message+= leds;  
-  return String(message); 
+  String response = "[";
+  response+= LED;
+  response+= "]";
+  return headerOk(response); 
 }
 
-int processResponse(int ttl) {
-  Serial.println("WAITING MESSAGE");
-  String text = load();
-  Serial.println(text);
-  if(has(text, ">") || ttl > 6) {
-    Serial.println("Sending message " + message);
-    wifi.println(String(message));
-    delay(10);
-    return WAITING_MESSAGE_OK;
+String ledStatus(String request) {
+  String ledString = request.substring(request.indexOf("status/") + 7);
+  ledString.trim();
+  int led = ledString.toInt();
+  if (led == LED) {
+    String state = OFF;
+    if (ledList[led] == HIGH) {
+      state = ON;
+    }
+    return headerOk(state);
   }
-  if(has(text, "Unlink")) {
-    return LISTENING;
-  }
-  delay(500);
-  return processResponse(ttl+1);
+  return headerBad();
 }
 
-int processClose(int ttl) {
-  String text = load();
-  if(has(text, "SEND OK") || ttl > 6) {
-    Serial.println("Receive OK");
-    wifi.println("AT+CIPCLOSE=0");
-    return LISTENING;
-  }
-  delay(500);
-  return processClose(ttl+1);
+String send(String command, const int timeout) {
+  return sendData(command, timeout, true);
 }
 
-String load() {
+String sendData(String command, const int timeout, boolean debug) {
+    wifi.print(command); // send the read character to the esp8266
+    return load(timeout);
+}
+
+String load(const int timeout) {
   String text = "";
-  while(wifi.available()) {
-    char c = wifi.read();
-    text+=c;
-  }
-  Serial.print(text);
-  return text;
+  long int time = millis();
+    while( (time+timeout) > millis())
+    {
+      while(wifi.available())
+      {   
+        // The esp has data so display its output to the serial window 
+        char c = wifi.read(); // read the next character.
+        text+=c;
+      }  
+    }
+    Serial.print(text);
+    return text;
 }
 
 boolean has(String text, String search) {
