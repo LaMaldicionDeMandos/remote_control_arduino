@@ -41,6 +41,13 @@
 #define COMMA ","
 #define ON "on"
 #define OFF "off"
+#define SLASH "/"
+#define COLON ":"
+#define SPACE " "
+
+#define CHAR_SLASH '/'
+#define CHAR_SPACE ' '
+#define CHAR_COMMA ','
 
 #define LED 4
 
@@ -144,22 +151,22 @@ void listen() {
 }
 
 void processRequest() {
-  String cip = wifi.readStringUntil(',');
-  wifi.find(":");
-  String method = wifi.readStringUntil(' ');
-  String request = wifi.readStringUntil(' ');
+  String cip = wifi.readStringUntil(CHAR_COMMA);
+  wifi.find(COLON);
+  String method = wifi.readStringUntil(CHAR_SPACE);
   String message;
-  if (HTTP_PUT.equals(method)) {
+  wifi.find(SLASH);
+  if (method.equals(HTTP_PUT)) {
     message = putRequest();
-  } else if (HTTP_GET.equals(method)) {
+  } else if (method.equals(HTTP_GET)) {
     message = getRequest();
   } else {
     message = HTTP_BAD_RESPONSE;
   }
-  load(200);
+  load(500);
   int messageSize = message.length();
   wifi.print(COMMAND_SEND);
-  wifi.print(cipText);
+  wifi.print(cip);
   wifi.print(COMMA);
   wifi.println(messageSize);
   if (wifi.find(RES_WAIT)) {
@@ -174,18 +181,16 @@ void processRequest() {
   }
 }
 
-int putRequest() {
-  wifi.find("/");
-  String command = wifi.readStringUntil('/');
+String putRequest() {
+  String command = wifi.readStringUntil(CHAR_SLASH);
   if (String(REQ_LED).equals(command)) {
     return led();
   }  
   return HTTP_BAD_RESPONSE;
 }
 
-int getRequest() {
-  wifi.find("/");
-  String command = wifi.readStringUntil('/');
+String getRequest() {
+  String command = wifi.readStringUntil(CHAR_SLASH);
   if (String(REQ_PING).equals(command)) {
     return ping();
   }
@@ -241,7 +246,7 @@ String leds() {
 }
 
 String ledStatus() {
-  String ledString = wifi.readStringUntil(' ');
+  String ledString = wifi.readStringUntil(CHAR_SPACE);
   int led = ledString.toInt();
   if (led == LED) {
     String state = OFF;
@@ -254,8 +259,8 @@ String ledStatus() {
 }
 
 String led() {
-  String ledString = wifi.readStringUntil('/');
-  String comm = wifi.readStringUntil(' ');
+  String ledString = wifi.readStringUntil(CHAR_SLASH);
+  String comm = wifi.readStringUntil(CHAR_SPACE);
   int led = ledString.toInt();
   if (led == LED) {
     String state = OFF;
