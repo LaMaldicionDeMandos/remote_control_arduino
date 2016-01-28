@@ -2,6 +2,10 @@
 
 #define SPEED 9600
 
+#define ENDPOINT "Speedy-2013"
+#define PASS "1150651025"
+#define ENDPOINT_AND_PASS "\"Speedy-2013\",\"1150651025\"\r\n"
+
 // Strings
 //COMMANDS
 #define COMMAND_AT "AT\r\n"
@@ -95,7 +99,7 @@ void configureMode() {
 
 void findEndpoint() {
   String text = command(COMMAND_LAP, OK, NOTHING, 5000);
-  if (!has(text, "La Maldicion de Mandos")) {
+  if (!has(text, ENDPOINT)) {
     Serial.println("No encontrado Endpoint, está prendido?");
   }
 }
@@ -103,7 +107,7 @@ void findEndpoint() {
 void configureEndpoint() {
   String cmd = "";
   cmd+= COMMAND_JAP;
-  cmd+= "\"La Maldicion de Mandos\",\"spuenci1\"\r\n";
+  cmd+= ENDPOINT_AND_PASS;
   command(cmd, OK, NOTHING, 5000);
 }
 
@@ -154,6 +158,8 @@ void processRequest() {
   String cip = wifi.readStringUntil(CHAR_COMMA);
   wifi.find(COLON);
   String method = wifi.readStringUntil(CHAR_SPACE);
+  Serial.print("Method: ");
+  Serial.println(method);
   String message;
   wifi.find(SLASH);
   if (method.equals(HTTP_PUT)) {
@@ -191,6 +197,8 @@ String putRequest() {
 
 String getRequest() {
   String command = wifi.readStringUntil(CHAR_SLASH);
+  Serial.print("COMMAND: ");
+  Serial.println(command);
   if (String(REQ_PING).equals(command)) {
     return ping();
   }
