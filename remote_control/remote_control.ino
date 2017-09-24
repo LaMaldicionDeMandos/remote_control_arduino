@@ -36,10 +36,10 @@
 #define HTTP_BAD_RESPONSE "HTTP/1.1 404 Bad Request\r\nContent-Type: text/text\r\nContent-Length: 0\r\n\r\n"
 
 //REQUESTS
-#define REQ_PING "ping"
-#define REQ_LEDS "leds"
-#define REQ_STATUS "status"
-#define REQ_LED "led"
+#define REQ_PING "ping" /* /ping */
+#define REQ_LEDS "leds" /* /leds */
+#define REQ_STATUS "status" /* /status/{led} */
+#define REQ_LED "led" /* /led/{led}/{on|off} */
 
 //MISELANEUS
 #define COMMA ","
